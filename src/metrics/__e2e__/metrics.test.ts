@@ -155,7 +155,7 @@ describe('METRICS', () => {
 			const response = await get('/api/v1/metrics/schema', analystToken);
 
 			expect(response.status).toBe(200);
-			expect(response.body.data.tables).toHaveLength(8);
+			expect(response.body.data.tables).toHaveLength(9);
 
 			const body = JSON.stringify(response.body);
 			expect(body).not.toContain('password_hash');

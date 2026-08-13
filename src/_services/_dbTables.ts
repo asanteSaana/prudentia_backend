@@ -22,6 +22,7 @@ export const AnalyticsTables = {
 	PremiumPayments: 'premium_payments',
 	Garages: 'garages',
 	Claims: 'claims',
+	ClaimPayments: 'claim_payments',
 	ClaimAssessments: 'claim_assessments'
 } as const;
 
@@ -32,7 +33,7 @@ export const ApplicationTables = {
 
 export const DB = {...AnalyticsTables, ...ApplicationTables} as const;
 
-/** The 8 analytics tables, in dependency order — safe for create; reverse for drop. */
+/** The analytics tables, in dependency order — safe for create; reverse for drop. */
 export const ANALYTICS_TABLE_ORDER: string[] = [
 	AnalyticsTables.Regions,
 	AnalyticsTables.Customers,
@@ -41,6 +42,8 @@ export const ANALYTICS_TABLE_ORDER: string[] = [
 	AnalyticsTables.PremiumPayments,
 	AnalyticsTables.Garages,
 	AnalyticsTables.Claims,
+	// Both hang off claims, so they follow it.
+	AnalyticsTables.ClaimPayments,
 	AnalyticsTables.ClaimAssessments
 ];
 

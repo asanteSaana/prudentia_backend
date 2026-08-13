@@ -74,6 +74,7 @@ export interface GeneratedDataset {
 	premiumPayments: any[];
 	garages: any[];
 	claims: any[];
+	claimPayments: any[];
 	claimAssessments: any[];
 }
 
@@ -463,6 +464,100 @@ export function generateDataset(seed: number = DATASET_SEED): GeneratedDataset {
 		claim.paid_amount = money(parseFloat(claim.incurred_amount) * paidFraction);
 	}
 
+	/**
+	 * ── claim payments — the development history (FR-26) ─────────────────────
+	 *
+	 * This pass runs LAST and draws from its OWN generator, seeded separately.
+	 *
+	 * That is not fastidiousness. Every figure this project documents — loss ratio 0.752,
+	 * claim frequency 0.311, severity GHS 7,312 — is reproducible only because the draw
+	 * sequence is fixed. Taking numbers from the shared `random()` here would shift every
+	 * subsequent draw and silently change all of them; appending a pass that consumes a
+	 * different stream cannot, because the rows above are already final.
+	 *
+	 * ── The schedule is derived from the claim, not invented ─────────────────
+	 *
+	 * Payments must sum EXACTLY to `claims.paid_amount`, which pass 2 has already fixed.
+	 * They are a decomposition of a number that exists, not a new quantity — so
+	 * `SUM(claim_payments.amount)` equals `SUM(claims.paid_amount)` by construction, and a
+	 * test asserts it. Anything else would give the product two different answers to
+	 * "how much have we paid", which is precisely the drift this schema is meant to avoid.
+	 *
+	 *   REJECTED         nothing. Reserved at zero, paid nothing.
+	 *   SETTLED          one payment at settlement, or an interim then a final. Motor is
+	 *                    a short-tail line and these settle in ~35 days, so they land in
+	 *                    development period 0 or, across a year boundary, 1.
+	 *   OPEN / PENDING   instalments from notification up to AS_AT. These are the claims
+	 *                    that are still developing, and they are what puts anything in
+	 *                    development periods 1 and beyond.
+	 */
+	const paymentRandom = mulberry32(seed + 7919);
+	const payBetween = (min: number, max: number) => min + paymentRandom() * (max - min);
+	const payInt = (min: number, max: number) => Math.floor(payBetween(min, max + 1));
+
+	const claimPayments: any[] = [];
+	let claimPaymentId = 1;
+
+	for (const claim of claims) {
+		const paid = parseFloat(claim.paid_amount);
+		if (!(paid > 0)) continue;
+
+		const notified = new Date(`${claim.notification_date}T00:00:00.000Z`);
+		const settled = claim.settlement_date ? new Date(`${claim.settlement_date}T00:00:00.000Z`) : null;
+
+		/** [date, fraction of paid_amount] — fractions are normalised below. */
+		const schedule: Array<[Date, number]> = [];
+
+		if (settled) {
+			// Two payments on the larger settled claims: an interim once liability is
+			// admitted, the balance on settlement.
+			const splits = paid > 9000 && paymentRandom() < 0.45 ? 2 : 1;
+			if (splits === 1) {
+				schedule.push([settled, 1]);
+			} else {
+				const gap = Math.max(1, Math.round((settled.getTime() - notified.getTime()) / DAY_MS));
+				schedule.push([addDays(notified, Math.max(1, Math.round(gap * 0.4))), payBetween(0.3, 0.6)]);
+				schedule.push([settled, 1]);
+			}
+		} else {
+			/**
+			 * Still open. Instalments across the time it has been open — more of them the
+			 * longer it has run, which is what produces a genuine development tail rather
+			 * than a single lump that happens to sit in a later year.
+			 */
+			const openDays = Math.max(1, Math.round((AS_AT.getTime() - notified.getTime()) / DAY_MS));
+			const instalments = openDays > 540 ? payInt(2, 4) : openDays > 210 ? payInt(1, 3) : 1;
+
+			for (let index = 0; index < instalments; index++) {
+				// Spread across the open period, never on or after AS_AT.
+				const at = Math.round((openDays * (index + 1)) / (instalments + 1));
+				schedule.push([addDays(notified, Math.max(1, at)), payBetween(0.5, 1.5)]);
+			}
+		}
+
+		// Normalise the weights onto `paid`, giving the LAST payment the rounding
+		// remainder so the sum is exact to the cent rather than approximately right.
+		const weights = schedule.map(([, weight]) => weight);
+		const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
+
+		let allocated = 0;
+		schedule.forEach(([date, weight], index) => {
+			const last = index === schedule.length - 1;
+			const amount = last ? paid - allocated : Math.round((paid * weight * 100) / weightTotal) / 100;
+			allocated += amount;
+
+			claimPayments.push({
+				id: claimPaymentId++,
+				claim_id: claim.id,
+				payment_date: iso(date),
+				amount: money(amount),
+				// FINAL only where the claim is actually closed. An open claim's newest
+				// payment is still an interim, however large.
+				payment_type: last && settled ? 'FINAL' : 'INTERIM'
+			});
+		});
+	}
+
 	// ── claim assessments ────────────────────────────────────────────────────
 	const claimAssessments: any[] = [];
 	let assessmentId = 1;
@@ -516,6 +611,7 @@ export function generateDataset(seed: number = DATASET_SEED): GeneratedDataset {
 		premiumPayments,
 		garages,
 		claims: strip(claims, ['_severity', '_settled']),
+		claimPayments,
 		claimAssessments
 	};
 }

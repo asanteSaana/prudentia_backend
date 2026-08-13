@@ -85,8 +85,8 @@ describe('metric glossary', () => {
 });
 
 describe('catalogue shape', () => {
-	it('describes all 8 analytics tables', () => {
-		expect(CATALOGUE).toHaveLength(8);
+	it('describes all 9 analytics tables', () => {
+		expect(CATALOGUE).toHaveLength(9);
 	});
 
 	it('gives every column a type and a description', () => {

@@ -154,9 +154,30 @@ export const CATALOGUE: CatalogueTable[] = [
 				name: 'paid_amount',
 				type: 'numeric',
 				description:
-					'Cash paid out on the claim so far — money going OUT. A single cumulative figure as at today, NOT a payment history: there is no record of when each part was paid, so paid loss cannot be split across development periods.'
+					'Cash paid out on the claim so far — money going OUT. A single cumulative TOTAL with no dates. For WHEN each portion was paid, and therefore for anything involving development periods, use the claim_payments table; its amounts sum to this figure.'
 			},
 			{name: 'fraud_flag', type: 'boolean', description: 'Flagged as suspected fraud'}
+		]
+	},
+	{
+		name: 'claim_payments',
+		description:
+			'Individual payments made OUT on a claim, each with the date it was paid. This is claim money, not premium. One claim has many rows; they sum to claims.paid_amount. THIS is the table for loss development, development periods and loss triangles — never premium_payments.',
+		columns: [
+			{name: 'id', type: 'integer', description: 'Primary key'},
+			{name: 'claim_id', type: 'integer', description: 'FK to claims.id'},
+			{
+				name: 'payment_date',
+				type: 'date',
+				description:
+					'Date this portion was paid. Development period = year of payment_date minus year of the claim incident_date; period 0 is payment in the accident year itself.'
+			},
+			{name: 'amount', type: 'numeric', description: 'Amount of THIS payment in GHS — not the claim total.'},
+			{
+				name: 'payment_type',
+				type: 'text',
+				description: 'INTERIM | FINAL. FINAL appears only on a settled claim; an open claim has interims only.'
+			}
 		]
 	},
 	{
@@ -214,7 +235,7 @@ export const METRIC_GLOSSARY: Array<{term: string; definition: string}> = [
 	{
 		term: 'Loss development / loss triangle',
 		definition:
-			'NOT DERIVABLE from this schema, and must be declined. A development triangle needs claim payment transactions dated over time; this database records only claims.paid_amount, one cumulative figure per claim with no payment dates. premium_payments is premium received and is not claim money. Decline rather than approximating one from settlement_date or premium_payments.'
+			'Use claim_payments joined to claims. Accident year = EXTRACT(YEAR FROM claims.incident_date). Development period = EXTRACT(YEAR FROM claim_payments.payment_date) - EXTRACT(YEAR FROM claims.incident_date), so period 0 is payment in the accident year. Cumulative paid at period N is the SUM of amounts where the development period is <= N. Never build this from premium_payments, which is premium received and not claim money.'
 	}
 ];
 

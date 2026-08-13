@@ -31,6 +31,13 @@ export const ClaimCauses = ['ACCIDENT', 'THEFT', 'FIRE', 'FLOOD', 'VANDALISM', '
 
 export const ClaimStatuses = ['SETTLED', 'OPEN', 'PENDING', 'REJECTED'] as const;
 
+/**
+ * A claim payment is either an instalment against a claim still developing, or the one
+ * that closes it. The distinction is what lets an analyst separate "paid so far" from
+ * "finished" without joining back to the claim's status.
+ */
+export const ClaimPaymentTypes = ['INTERIM', 'FINAL'] as const;
+
 export const UserRoles = ['EXECUTIVE', 'ANALYST'] as const;
 
 export const ValidationStatuses = ['PERMITTED', 'REJECTED'] as const;

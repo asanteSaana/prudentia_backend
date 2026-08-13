@@ -29,6 +29,7 @@ export async function seed(knex: Knex): Promise<void> {
 	await knex.batchInsert('premium_payments', data.premiumPayments, CHUNK);
 	await knex.batchInsert('garages', data.garages, CHUNK);
 	await knex.batchInsert('claims', data.claims, CHUNK);
+	await knex.batchInsert('claim_payments', data.claimPayments, CHUNK);
 	await knex.batchInsert('claim_assessments', data.claimAssessments, CHUNK);
 
 	// Explicit ids were inserted, so the sequences still sit at 1 and the next natural

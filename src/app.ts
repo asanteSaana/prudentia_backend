@@ -2,6 +2,7 @@ import cors from 'cors';
 import express, {Express} from 'express';
 import helmet from 'helmet';
 import {Constants, Database} from './_services';
+import {describeProvider} from './llm';
 import {four0FourHandler, renderError} from './middleware';
 import createRoutes from './routesCreator';
 
@@ -72,12 +73,23 @@ export function createServer(app: Express): Express {
 			// would name the host and is not for an unauthenticated caller.
 		}
 
-		const provider = Constants.LLM_PROVIDER === 'claude' && Constants.ANTHROPIC_API_KEY ? 'claude' : 'stub';
-
+		/**
+		 * The provider that is ACTUALLY live, from the factory that built it (defect D-43).
+		 *
+		 * This used to re-derive it here — `LLM_PROVIDER === 'claude' && ANTHROPIC_API_KEY`
+		 * — which was true before the multi-provider refactor and quietly wrong after it:
+		 * a working Azure or OpenAI deployment reported `stub`. That is the single worst
+		 * place for that answer to be wrong, because this endpoint is what an operator
+		 * curls to find out whether a deployment picked up its credentials.
+		 *
+		 * `describeProvider()` asks the cached instance what it is, so the health check
+		 * cannot disagree with the thing serving traffic. It also names the model, which is
+		 * what tells you a config change took effect.
+		 */
 		res.status(database === 'up' ? 200 : 503).json({
 			status: database === 'up' ? 'healthy' : 'unhealthy',
 			database,
-			provider,
+			provider: describeProvider(),
 			timestamp: new Date().toISOString()
 		});
 	});
