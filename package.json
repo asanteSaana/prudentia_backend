@@ -23,7 +23,8 @@
 		"db:seed": "knex seed:run",
 		"db:reset": "npm run db:rollback -- --all && npm run db:migrate && npm run db:seed",
 		"verify:signals": "ts-node scripts/verify-signals.ts",
-		"verify": "npm run lint && npm run typecheck:strict && npm run test:unit && npm run test:e2e"
+		"verify": "npm run lint && npm run typecheck:strict && npm run test:unit && npm run test:e2e",
+		"smoke:prod": "node scripts/prod-boot-smoke.js"
 	},
 	"engines": {
 		"node": ">=20.0.0",

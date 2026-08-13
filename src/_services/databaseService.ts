@@ -29,8 +29,27 @@ const MAX_POOL_CONNECTIONS = 70;
  */
 const MAX_READONLY_POOL_CONNECTIONS = 8;
 
+/**
+ * Where the migrations are, and in what form.
+ *
+ * ── The directory needs NO environment branch (defect D-46) ──────────────────
+ *
+ * `getBaseDir()` is already `src/` under ts-node-dev and jest, and `dist/` after a build —
+ * it resolves from `__dirname`, which moves with the compiled output. Appending a literal
+ * `'dist'` on top of that double-counted it, and because the branch contributed an empty
+ * segment in dev and test, **the wrong half only ever ran in production**:
+ *
+ *   dev   <root>/src  + ''     + _migrations  ->  <root>/src/_migrations          ✔
+ *   prod  <root>/dist + 'dist' + _migrations  ->  <root>/dist/dist/_migrations    ✘
+ *
+ * The deployed service failed at boot with `ENOENT … scandir '/home/site/wwwroot/dist/
+ * dist/_migrations'`, having passed every test — none of which run in production mode.
+ *
+ * The EXTENSION branch is real and stays: ts-node-dev and ts-jest load `.ts`, the built
+ * output is `.js`.
+ */
 const migrationDir: Knex.MigratorConfig = {
-	directory: path.join(getBaseDir(), Constants.IS_DEV || Constants.IS_TEST ? '' : 'dist', '_migrations'),
+	directory: path.join(getBaseDir(), '_migrations'),
 	extension: Constants.IS_DEV || Constants.IS_TEST ? 'ts' : 'js'
 };
 

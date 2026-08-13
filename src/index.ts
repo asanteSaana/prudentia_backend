@@ -3,7 +3,7 @@ config();
 
 import express from 'express';
 import {loadModule} from 'libpg-query';
-import {assertAuthConfigured, Database, validateReadOnlyPrivileges} from './_services';
+import {assertAuthConfigured, Constants, Database, validateReadOnlyPrivileges} from './_services';
 import {createServer} from './app';
 import {describeProvider} from './llm';
 
@@ -45,14 +45,26 @@ export async function initServer(): Promise<void> {
 	 * while the operator believes it is talking to Azure is the failure this line exists
 	 * to prevent, and `getProvider()` has already logged a warning if it fell back.
 	 */
-	if (process.env.NODE_ENV !== 'production') console.log(`LLM provider: ${describeProvider()}`);
+	/**
+	 * Logged in PRODUCTION too — only tests are silenced (defect D-47).
+	 *
+	 * These two lines were gated on `NODE_ENV !== 'production'`, so a deployed boot
+	 * printed the read-only assertion and then went silent: no confirmation that the
+	 * service began listening, and no way to tell from the log whether it had picked up
+	 * its provider credentials. That is precisely the information a deployment needs, and
+	 * precisely when it is hardest to get any other way.
+	 *
+	 * Neither line carries a secret. `describeProvider()` returns the provider's `name()`,
+	 * which is vendor and model only — a test asserts it never contains a credential.
+	 */
+	if (!Constants.IS_TEST) console.log(`LLM provider: ${describeProvider()}`);
 
 	const app = createServer(express());
 
 	// Azure App Service supplies PORT. Reading it is not optional there.
 	const port = process.env.PORT || 8080;
 	app.listen(port, () => {
-		if (process.env.NODE_ENV !== 'production') console.log(`PrudenTia API listening on ${port}`);
+		if (!Constants.IS_TEST) console.log(`PrudenTia API listening on ${port}`);
 	});
 }
 
