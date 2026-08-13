@@ -1,7 +1,8 @@
+import {ChartTypes, ExecutionStatuses, UserRoles, ValidationStatuses} from './dbEnums';
 import {Request} from 'express';
 import {Knex} from 'knex';
 
-export type UserRole = 'EXECUTIVE' | 'ANALYST';
+export type UserRole = (typeof UserRoles)[number];
 
 export interface AuthenticatedUser {
 	id: number;
@@ -44,6 +45,16 @@ export interface ValidationResult {
 	failedCheck: string | null;
 }
 
-export type ValidationStatus = 'PERMITTED' | 'REJECTED';
-export type ExecutionStatus = 'SUCCESS' | 'ERROR' | 'TIMEOUT' | 'PROVIDER_UNAVAILABLE' | 'NOT_ATTEMPTED';
-export type ChartType = 'kpi' | 'bar' | 'line' | 'table';
+/**
+ * DERIVED from `dbEnums.ts`, not restated.
+ *
+ * These were hand-written unions duplicating the tuples that also drive the CHECK
+ * constraints and the LLM's value lists. Adding `hbar`, `area` and `donut` to the enum
+ * left this union behind, and every use site type-errored — which was the good outcome.
+ * The bad one is a union that is quietly WIDER than the constraint: the compiler would
+ * then bless a value the database rejects at insert time, which is the drift `dbEnums.ts`
+ * exists to prevent.
+ */
+export type ValidationStatus = (typeof ValidationStatuses)[number];
+export type ExecutionStatus = (typeof ExecutionStatuses)[number];
+export type ChartType = (typeof ChartTypes)[number];

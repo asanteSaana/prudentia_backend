@@ -39,7 +39,7 @@ export const SQL_TOOL_SCHEMA = {
 			type: 'string',
 			enum: [...ChartTypes],
 			description:
-				'How the result should be shown: kpi for a single value, line for a time series, bar for categories, table for three or more columns.'
+				'How the result should be shown: kpi for a single value, line or area for a time series, bar or hbar for categories, donut for parts of a whole, table for three or more columns. This is a hint — it is reconciled against the shape actually returned.'
 		},
 		explanation: {
 			type: 'string',

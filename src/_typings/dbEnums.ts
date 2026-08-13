@@ -37,7 +37,16 @@ export const ValidationStatuses = ['PERMITTED', 'REJECTED'] as const;
 
 export const ExecutionStatuses = ['SUCCESS', 'ERROR', 'TIMEOUT', 'PROVIDER_UNAVAILABLE', 'NOT_ATTEMPTED'] as const;
 
-export const ChartTypes = ['kpi', 'bar', 'line', 'table'] as const;
+/**
+ * Presentations the system can render.
+ *
+ * `hbar` is the horizontal bar — the same encoding as `bar` turned on its side, which is
+ * how long category labels (garage names, regions) stay readable without rotated text.
+ * `donut` is offered only where parts genuinely sum to a whole; `chartSelector` decides,
+ * not the model. There is no pie: a donut is the same chart with the useless centre
+ * removed, and the hole is where the total goes.
+ */
+export const ChartTypes = ['kpi', 'bar', 'hbar', 'line', 'area', 'donut', 'table'] as const;
 
 /** Knex `.checkIn()` wants a mutable array; the `as const` tuples above are readonly. */
 export const asCheck = (values: readonly string[]): string[] => [...values];

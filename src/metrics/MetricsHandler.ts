@@ -17,6 +17,15 @@ class MetricsHandler {
 		return {data: await MetricsQuery.headline(req.trx)};
 	}
 
+	/**
+	 * FR-22 — the Overview's breakdowns. Hand-written SQL, no model in the path, so these
+	 * keep answering during a provider outage exactly as the headline figures do (NFR-12).
+	 */
+	@route()
+	static async breakdowns(req: CustomRequest, _res: Response) {
+		return {data: await MetricsQuery.breakdowns(req.trx)};
+	}
+
 	/** The dashboard's temporal series. */
 	@route()
 	static async trend(req: CustomRequest, _res: Response) {

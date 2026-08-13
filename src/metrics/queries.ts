@@ -43,6 +43,19 @@ export interface TrendPoint {
 	incurredAmount: number;
 }
 
+/** One labelled magnitude. Every breakdown below is this shape, so one chart renders all. */
+export interface Slice {
+	label: string;
+	value: number;
+}
+
+export interface Breakdowns {
+	premiumByChannel: Slice[];
+	lossRatioByRegion: Slice[];
+	claimsByCause: Slice[];
+	policiesByProduct: Slice[];
+}
+
 const asNumber = (value: unknown): number => {
 	if (value === null || value === undefined) return 0;
 	const parsed = typeof value === 'number' ? value : parseFloat(String(value));
@@ -103,6 +116,83 @@ export namespace MetricsQuery {
 			earnedPremium: asNumber(row.earned_premium),
 			activePolicies: asNumber(row.active_policies),
 			averageSettlementDays: asNumber(row.average_settlement_days)
+		};
+	}
+
+	/**
+	 * The Overview's breakdowns (FR-22).
+	 *
+	 * Hand-written, like the headline figures and for the same three reasons: they are
+	 * exact, they carry no user input, and they keep working when the model does not.
+	 *
+	 * ── Why these four, and why they are not one generic endpoint ──────────────
+	 *
+	 * Each answers a question an underwriter actually asks on opening the product: where
+	 * the money comes from, where it is being lost, what is driving claims, and what is
+	 * being sold. A generic "group anything by anything" endpoint would be the LLM
+	 * pipeline again, without the validation gate in front of it — the exact thing this
+	 * architecture exists to avoid.
+	 *
+	 * `lossRatioByRegion` is computed from SEPARATELY AGGREGATED sums, not across a join.
+	 * `FROM policies LEFT JOIN claims` duplicates a policy's earned premium once per claim
+	 * and understates the ratio by a bounded amount (measured at 2.86%, debt TD-M). The
+	 * conversational pipeline tolerates that pattern because it is what a model generates
+	 * most reliably; the dashboard must not, because these are the numbers the user manual
+	 * says can be relied on.
+	 */
+	export async function breakdowns(knex: Knex): Promise<Breakdowns> {
+		const toSlices = (rows: Array<Record<string, unknown>>): Slice[] =>
+			rows.map(row => ({label: String(row.label ?? ''), value: asNumber(row.value)}));
+
+		// One round trip per breakdown, but all four in parallel: they are independent
+		// reads and the page shows them together, so serialising them would only add
+		// latency to a dashboard that is meant to be instant.
+		const [premium, lossRatio, causes, products] = await Promise.all([
+			knex.raw(`
+				SELECT channel AS label, COALESCE(SUM(earned_premium), 0) AS value
+				  FROM policies
+				 GROUP BY channel
+				 ORDER BY value DESC
+			`),
+			knex.raw(`
+				SELECT r.name AS label,
+				       COALESCE(claim_totals.incurred / NULLIF(policy_totals.earned, 0), 0) AS value
+				  FROM regions r
+				  LEFT JOIN LATERAL (
+				       SELECT SUM(p.earned_premium) AS earned
+				         FROM policies p
+				         JOIN customers c ON c.id = p.customer_id
+				        WHERE c.region_id = r.id
+				  ) policy_totals ON TRUE
+				  LEFT JOIN LATERAL (
+				       SELECT SUM(cl.incurred_amount) AS incurred
+				         FROM claims cl
+				         JOIN policies p2 ON p2.id = cl.policy_id
+				         JOIN customers c2 ON c2.id = p2.customer_id
+				        WHERE c2.region_id = r.id
+				  ) claim_totals ON TRUE
+				 WHERE policy_totals.earned IS NOT NULL
+				 ORDER BY value DESC
+			`),
+			knex.raw(`
+				SELECT cause AS label, COUNT(*) AS value
+				  FROM claims
+				 GROUP BY cause
+				 ORDER BY value DESC
+			`),
+			knex.raw(`
+				SELECT product_type AS label, COUNT(*) AS value
+				  FROM policies
+				 GROUP BY product_type
+				 ORDER BY value DESC
+			`)
+		]);
+
+		return {
+			premiumByChannel: toSlices(premium.rows),
+			lossRatioByRegion: toSlices(lossRatio.rows),
+			claimsByCause: toSlices(causes.rows),
+			policiesByProduct: toSlices(products.rows)
 		};
 	}
 

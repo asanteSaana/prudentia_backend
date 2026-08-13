@@ -4,7 +4,7 @@ import {ExecutionError, ExecutionResult, executeValidatedSql} from '../guard/exe
 import {validateSql} from '../guard/validator';
 import {getProvider, ProviderUnavailableError} from '../llm';
 import {Audit} from './auditRecorder';
-import {selectChartType} from './chartSelector';
+import {selectChart} from './chartSelector';
 
 /**
  * The six-stage pipeline (docs/02 §6.1, FR-08 – FR-17).
@@ -33,6 +33,8 @@ export interface QueryOutcome {
 	question: string;
 	explanation: string;
 	chartType: ChartType | null;
+	/** Every presentation that is honest for this result. Decided server-side (ADR-08). */
+	chartOptions: ChartType[];
 	columns: ExecutionResult['columns'];
 	rows: ExecutionResult['rows'];
 	rowCount: number;
@@ -181,7 +183,7 @@ export async function answerQuestion(user: AuthenticatedUser, question: string):
 
 	// ── Stage 6: shape ───────────────────────────────────────────────────────
 	// The model's hint is reconciled against what actually came back (ADR-08).
-	const chartType = selectChartType(proposal.chartType, execution);
+	const {chartType, options: chartOptions} = selectChart(proposal.chartType, execution);
 
 	const queryId = await Audit.record({
 		userId: user.id,
@@ -201,6 +203,7 @@ export async function answerQuestion(user: AuthenticatedUser, question: string):
 		question: trimmed,
 		explanation: proposal.explanation,
 		chartType,
+		chartOptions,
 		columns: execution.columns,
 		rows: execution.rows,
 		rowCount: execution.rowCount,
