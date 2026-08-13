@@ -1,0 +1,23 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"strict": true,
+		"strictNullChecks": true,
+		"noImplicitAny": true,
+		"noImplicitReturns": true,
+		"noEmit": true
+	},
+	/**
+	 * The base config is now strict, so this overlay no longer *adds* strictness to the
+	 * application — it widens the SCOPE that gets checked. `tsconfig.json` covers src,
+	 * scripts and knexfile; this adds nothing beyond them today.
+	 *
+	 * It is kept rather than deleted for two reasons. It is the gate `npm run verify`
+	 * calls, so the definition of done has one stable entry point whatever the base
+	 * config later becomes; and if any file ever needs a strictness exemption, the
+	 * exemption goes in the base config and this stays the file that refuses to grant
+	 * it. A ratchet is easier to keep than to reinstate.
+	 */
+	"include": ["./src/**/*", "./scripts/**/*", "./knexfile.ts"],
+	"exclude": ["node_modules", "dist"]
+}

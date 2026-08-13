@@ -1,0 +1,58 @@
+# Local topology (NFR-18): the API and a PostgreSQL 17 matching production.
+#
+# The database image major version tracks `libpg-query@pg17` deliberately. That pin is
+# what makes ADR-01's claim true — "what we validate is byte-for-byte what the server
+# would execute" — and it only holds if the parser and the server agree on the grammar.
+# Changing one without the other is a silent divergence, so change them in one commit.
+#
+#   docker compose up -d db      # database only; run the API with `npm run dev`
+#   docker compose up            # both
+
+services:
+  db:
+    image: postgres:17
+    container_name: prudentia-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: prudentia
+    ports:
+      # 5433, not 5432 — a developer machine often already runs a local PostgreSQL, and
+      # silently binding over it produces the worst possible failure: migrations applied
+      # to the wrong database.
+      - '5433:5432'
+    volumes:
+      - prudentia-pgdata:/var/lib/postgresql/data
+      - ./scripts/bootstrap-local-db.sql:/docker-entrypoint-initdb.d/00-bootstrap.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d prudentia']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    container_name: prudentia-api
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      IS_PRODUCTION: 'false'
+      PORT: '8080'
+      DATABASE_HOST: db
+      DATABASE_PORT: '5432'
+      DATABASE_NAME: prudentia
+      DATABASE_USER: prudentia_app
+      DATABASE_PASSWORD: PrudenTiaApp#2026
+      DATABASE_RO_USER: prudentia_ro
+      DATABASE_RO_PASSWORD: PrudenTiaRo#2026
+      SSL_MODE_ENV: 'false'
+      AUTH_JWT_KEY: compose-local-only-not-a-production-secret
+      LLM_PROVIDER: stub
+      CORS_ALLOWED_ORIGINS: http://localhost:5173
+    ports:
+      - '8080:8080'
+
+volumes:
+  prudentia-pgdata:

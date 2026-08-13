@@ -1,0 +1,49 @@
+import {Request} from 'express';
+import {Knex} from 'knex';
+
+export type UserRole = 'EXECUTIVE' | 'ANALYST';
+
+export interface AuthenticatedUser {
+	id: number;
+	email: string;
+	fullName: string;
+	role: UserRole;
+	isActive: boolean;
+}
+
+/** Express request, after `@route()` has authenticated and opened the transaction. */
+export interface CustomRequest extends Request {
+	user: AuthenticatedUser;
+	trx: Knex.Transaction;
+}
+
+export interface BaseJSONError {
+	message?: string;
+	httpStatusCode?: number;
+	status?: number;
+	meta?: any;
+	date?: string;
+}
+
+export interface CustomError extends Error {
+	toJSON?: () => BaseJSONError;
+	httpStatusCode?: number;
+}
+
+export interface PostgresError extends Error {
+	code: string;
+	detail?: string;
+	constraint?: string;
+}
+
+/** Outcome of the validation gate. `reason`/`failedCheck` are for the audit log ONLY. */
+export interface ValidationResult {
+	permitted: boolean;
+	normalisedSql: string | null;
+	reason: string | null;
+	failedCheck: string | null;
+}
+
+export type ValidationStatus = 'PERMITTED' | 'REJECTED';
+export type ExecutionStatus = 'SUCCESS' | 'ERROR' | 'TIMEOUT' | 'PROVIDER_UNAVAILABLE' | 'NOT_ATTEMPTED';
+export type ChartType = 'kpi' | 'bar' | 'line' | 'table';

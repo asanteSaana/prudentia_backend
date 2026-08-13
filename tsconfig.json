@@ -1,0 +1,45 @@
+{
+	"compilerOptions": {
+		"module": "CommonJS",
+		"baseUrl": "./",
+		"outDir": "./dist/",
+		"allowJs": true,
+		"allowSyntheticDefaultImports": true,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"lib": ["ESNext"],
+		"moduleResolution": "node",
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"target": "ES2020",
+		"isolatedModules": true,
+		"noEmit": true,
+
+		/**
+		 * STRICT EVERYWHERE — a deliberate departure from the template estate, which
+		 * runs `strict: false` and switches off noImplicitAny and strictNullChecks.
+		 * Recorded as DV-14.
+		 *
+		 * The templates' looseness is a reasonable position for a large existing
+		 * codebase being migrated. This one is greenfield, and the cost of adopting
+		 * strict at the start was measured rather than assumed: two errors across the
+		 * whole backend. There is no migration to pay for, so there is nothing to trade.
+		 *
+		 * `noUnusedLocals`/`noUnusedParameters` stay OFF. They are style rules, not
+		 * soundness rules, and turning them on makes an unused `_res` in a handler
+		 * signature a build failure — which the route decorator's shape requires.
+		 */
+		"strict": true,
+		"strictNullChecks": true,
+		"noImplicitAny": true,
+		"noImplicitReturns": true,
+		"experimentalDecorators": true,
+		"emitDecoratorMetadata": true,
+		"noUnusedParameters": false,
+		"noUnusedLocals": false,
+		"sourceMap": true,
+		"inlineSources": true,
+		"sourceRoot": "/"
+	},
+	"include": ["./src/**/*", "./scripts/**/*", "./knexfile.ts"]
+}
