@@ -10,7 +10,7 @@ import {Knex} from 'knex';
  *  1. **They are exact.** Every figure below is computed from separately aggregated
  *     sums, NOT across a join. `FROM policies LEFT JOIN claims` duplicates a policy's
  *     earned premium once per claim and understates the loss ratio by a bounded amount
- *     (measured at 2.86%, debt TD-M). The pipeline tolerates that pattern because it is
+ *     (measured at 3.17% on the current dataset, and growing with claim frequency — debt TD-M). The pipeline tolerates that pattern because it is
  *     what a model generates most reliably; the dashboard must not, because these are
  *     the numbers the user manual tells people they can rely on.
  *
@@ -135,7 +135,7 @@ export namespace MetricsQuery {
 	 *
 	 * `lossRatioByRegion` is computed from SEPARATELY AGGREGATED sums, not across a join.
 	 * `FROM policies LEFT JOIN claims` duplicates a policy's earned premium once per claim
-	 * and understates the ratio by a bounded amount (measured at 2.86%, debt TD-M). The
+	 * and understates the ratio by a bounded amount (measured at 3.17% on the current dataset, and growing with claim frequency — debt TD-M). The
 	 * conversational pipeline tolerates that pattern because it is what a model generates
 	 * most reliably; the dashboard must not, because these are the numbers the user manual
 	 * says can be relied on.
