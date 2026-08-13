@@ -44,7 +44,7 @@ export const SQL_TOOL_SCHEMA = {
 		explanation: {
 			type: 'string',
 			description:
-				'One plain sentence naming what was measured and how it was grouped or filtered. The user reads this to check you understood the question they meant to ask.'
+				'Two or three plain sentences, written BEFORE you have seen any result. First: what was measured, and how it was grouped, filtered or restricted — the reader uses this to check you understood the question they meant to ask, so name any threshold or exclusion you applied and why. Then, where the question asks what the answer means or what to do about it: what a reader should look for in the figures, and what each pattern would indicate. Never assert what the data shows, or name a number, a segment or a direction — you have not run the query. Describe how to read it, not what it says.'
 		}
 	},
 	required: ['sql', 'chart_type', 'explanation'],

@@ -16,8 +16,29 @@ const SNAKE_CASE: Record<string, string> = {
 	claimAssessments: 'claim_assessments'
 };
 
+/**
+ * Say out loud which database is about to be rewritten (defect D-51).
+ *
+ * `knexfile.ts` calls `dotenv.config()`, which loads the LOCAL `.env`. Running
+ * `npm run db:seed` without the target's variables set in the same shell therefore seeds
+ * **localhost** — and prints a completely convincing table of row counts while doing it.
+ * The operator then goes looking for the data in Azure and does not find it.
+ *
+ * This seed also DELETES every analytics row before inserting. A destructive operation
+ * that does not name its target is one command-line slip away from being run against the
+ * wrong database, so it names it.
+ */
+function announceTarget(knex: Knex): void {
+	const connection = knex.client.config.connection as {host?: string; database?: string};
+	const host = connection?.host ?? 'unknown host';
+	const database = connection?.database ?? 'unknown database';
+
+	console.log(`Seeding "${database}" at ${host} — every analytics row will be replaced.`);
+}
+
 export async function seed(knex: Knex): Promise<void> {
 	const started = Date.now();
+	announceTarget(knex);
 
 	// Reverse dependency order — foreign keys forbid anything else.
 	for (const table of [...ANALYTICS_TABLE_ORDER].reverse()) {

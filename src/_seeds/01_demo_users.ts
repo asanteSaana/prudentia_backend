@@ -15,6 +15,10 @@ import {hashPassword} from '../_services/authService';
  * avoided here.
  */
 export async function seed(knex: Knex): Promise<void> {
+	// Same reason as the analytics seed: name the database before writing to it.
+	const target = knex.client.config.connection as {host?: string; database?: string};
+	console.log(`Seeding users into "${target?.database}" at ${target?.host}.`);
+
 	await knex('users').del();
 
 	await knex('users').insert([

@@ -235,7 +235,10 @@ export const METRIC_GLOSSARY: Array<{term: string; definition: string}> = [
 	{
 		term: 'Loss development / loss triangle',
 		definition:
-			'Use claim_payments joined to claims. Accident year = EXTRACT(YEAR FROM claims.incident_date). Development period = EXTRACT(YEAR FROM claim_payments.payment_date) - EXTRACT(YEAR FROM claims.incident_date), so period 0 is payment in the accident year. Cumulative paid at period N is the SUM of amounts where the development period is <= N. Never build this from premium_payments, which is premium received and not claim money.'
+			'Use claim_payments joined to claims. Accident year = EXTRACT(YEAR FROM claims.incident_date). Development period = EXTRACT(YEAR FROM claim_payments.payment_date) - EXTRACT(YEAR FROM claims.incident_date), so period 0 is payment in the accident year. Cumulative paid at period N is the SUM of amounts where the development period is <= N. ' +
+			'CRITICAL — the unobserved corner of the triangle must be NULL, not a repeated figure. An accident year can only be observed up to (latest data year - accident year) periods: as at the end of 2025, accident year 2025 has period 0 only, 2024 has 0-1, and so on. Carrying the last figure across the remaining columns asserts that development stopped, when in fact the period has not elapsed, and it produces development factors of 1.0 out of no data at all. ' +
+			'So wrap each cumulative column in a guard that yields NULL beyond the observable limit, for example: CASE WHEN (SELECT MAX(EXTRACT(YEAR FROM payment_date)) FROM claim_payments) - EXTRACT(YEAR FROM c.incident_date) >= 2 THEN SUM(CASE WHEN EXTRACT(YEAR FROM cp.payment_date) - EXTRACT(YEAR FROM c.incident_date) <= 2 THEN cp.amount ELSE 0 END) END AS dev_2. ' +
+			'Never build this from premium_payments, which is premium received and not claim money.'
 	}
 ];
 
