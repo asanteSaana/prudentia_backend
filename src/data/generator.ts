@@ -48,17 +48,39 @@ export const DATASET_SEED = 20260812;
 /** Realistic for a Ghanaian motor book, and the figure Phase 5's checkpoint expects. */
 const TARGET_LOSS_RATIO = 0.78;
 
-/** docs/06: data period is 1 January 2023 – 31 December 2025. */
-const PERIOD_START = new Date(Date.UTC(2023, 0, 1));
+/**
+ * The data period. Widened from three years to FIVE (deviation DV-35).
+ *
+ * Three accident years made a loss development triangle three rows tall and every
+ * year-on-year question a single comparison. Five gives the triangle a shape worth
+ * reading, sixty months of seasonality rather than thirty-six, and enough history for
+ * "how has this changed" to have an answer.
+ *
+ * AS_AT is unchanged, so the widening is BACKWARDS. Extending forwards would have
+ * invented claims that have not happened yet and quietly moved the earned-premium
+ * arithmetic, which every headline figure rests on.
+ */
+const PERIOD_START = new Date(Date.UTC(2021, 0, 1));
 const PERIOD_END = new Date(Date.UTC(2025, 11, 31));
 /** "Today" for earned-premium arithmetic. Fixed, so earned premium is reproducible. */
 const AS_AT = new Date(Date.UTC(2025, 11, 31));
 
+/**
+ * Portfolio size (deviation DV-35).
+ *
+ * Roughly 1.8× the original, which matters for the questions rather than for the totals:
+ * a query that segments twice — loss ratio by region AND product, say — divides the book
+ * into cells, and thin cells make a real signal indistinguishable from sampling noise.
+ * More policies per cell is what makes those answers worth trusting.
+ *
+ * Policies are spread across five years now, so ACTIVE policies at AS_AT stay in the same
+ * range as before. The growth is in history, not in the size of the current book.
+ */
 const COUNTS = {
-	customers: 8000,
-	vehicles: 9600,
-	policies: 12000,
-	garages: 60
+	customers: 14000,
+	vehicles: 16800,
+	policies: 22000,
+	garages: 90
 };
 
 /** FR-18 glossary: claims ÷ policies. 0.30 is the calibration target. */

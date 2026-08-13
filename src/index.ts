@@ -3,7 +3,7 @@ config();
 
 import express from 'express';
 import {loadModule} from 'libpg-query';
-import {assertAuthConfigured, Constants, Database, validateReadOnlyPrivileges} from './_services';
+import {assertAuthConfigured, assertSchemaWritable, Constants, Database, validateReadOnlyPrivileges} from './_services';
 import {createServer} from './app';
 import {describeProvider} from './llm';
 
@@ -19,6 +19,15 @@ import {describeProvider} from './llm';
  */
 export async function initServer(): Promise<void> {
 	assertAuthConfigured();
+
+	/**
+	 * Before migrating, prove the role is allowed to. Since PostgreSQL 15 only the owner
+	 * of schema `public` may create in it, and that ownership arrives implicitly via
+	 * database ownership — so a deployment can create the role, set every environment
+	 * variable correctly, and still fail at the first CREATE TABLE with a message that
+	 * names no remedy (defect D-48).
+	 */
+	await assertSchemaWritable();
 
 	// Fail loudly on a half-applied schema: the gate's whitelist and the catalogue the
 	// LLM is shown both assume these tables exist (CLAUDE.md §4 rule 6).

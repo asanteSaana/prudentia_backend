@@ -1,6 +1,6 @@
 import {Knex} from 'knex';
 import {AnalyticsTables, APPLICATION_TABLE_LIST} from './_dbTables';
-import {ReadOnlyDatabase} from './databaseService';
+import {Database, ReadOnlyDatabase} from './databaseService';
 
 /**
  * Boot-time proof that the second line of defence is actually there (NFR-02, ADR-03).
@@ -118,4 +118,50 @@ async function assertApplicationTablesAreUnreachable(readonly: Knex): Promise<vo
 			);
 		}
 	}
+}
+
+/**
+ * Refuse to start if the application role cannot create objects in `public`.
+ *
+ * ── Why this is worth a boot check of its own (defect D-48) ─────────────────
+ *
+ * PostgreSQL 15 stopped granting `CREATE` on `public` to `PUBLIC`. Only the schema's
+ * owner may create there — and `public` is owned by the special role
+ * `pg_database_owner`, of which the **database owner** is implicitly a member. So the
+ * application role gets `CREATE` by owning the database, not by any explicit grant, and
+ * a deployment that creates the role but never transfers database ownership looks
+ * perfectly configured and fails at the first migration.
+ *
+ * Knex's own error — `create table "knex_migrations" … permission denied for schema
+ * public` — is accurate and tells an operator nothing about what to do. This runs before
+ * the migration and names the remedy, because the difference between those two messages
+ * is the difference between a minute and an afternoon.
+ */
+export async function assertSchemaWritable(): Promise<void> {
+	const knex = Database.getInstance();
+
+	const [state] = (
+		await knex.raw(`
+			SELECT current_user                                            AS role,
+			       current_database()                                      AS database,
+			       has_schema_privilege(current_user, 'public', 'CREATE')   AS can_create,
+			       pg_get_userbyid(d.datdba)                                AS database_owner,
+			       pg_get_userbyid(n.nspowner)                              AS schema_owner
+			  FROM pg_database d, pg_namespace n
+			 WHERE d.datname = current_database() AND n.nspname = 'public'
+		`)
+	).rows;
+
+	if (state?.can_create) return;
+
+	throw new Error(
+		`Role "${state?.role}" cannot CREATE in schema public of database "${state?.database}", ` +
+			'so migrations cannot run.\n' +
+			`  schema public is owned by : ${state?.schema_owner}\n` +
+			`  the database is owned by  : ${state?.database_owner}\n` +
+			'Since PostgreSQL 15, only the owner of schema public may create objects in it, and the\n' +
+			'database owner is a member of pg_database_owner implicitly. Fix as the admin login:\n\n' +
+			`  ALTER DATABASE ${state?.database} OWNER TO ${state?.role};\n` +
+			`  ALTER SCHEMA public OWNER TO ${state?.role};   -- only if schema_owner above is not pg_database_owner\n`
+	);
 }

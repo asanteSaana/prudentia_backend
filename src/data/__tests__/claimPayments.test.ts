@@ -128,12 +128,21 @@ describe('determinism', () => {
 		expect(again.claimPayments).toEqual(data.claimPayments);
 	});
 
+	/**
+	 * The payments pass draws from its OWN generator so it cannot shift the sequence that
+	 * produced the claims above it. These two figures are the tripwire: if that ever stops
+	 * being true, they move.
+	 *
+	 * They are exact, not ranges, and they are re-baselined deliberately when the dataset
+	 * is deliberately changed — most recently when the period widened to five years and
+	 * the portfolio grew (DV-35), which moved them from 0.7525 / 7,312.20. An assertion
+	 * that only ever loosens stops being a tripwire.
+	 */
 	it('did not disturb the figures the project documents', () => {
-		// If the payments pass had consumed the shared generator, these would move.
 		const earned = data.policies.reduce((sum: number, policy: any) => sum + parseFloat(policy.earned_premium), 0);
 		const incurred = data.claims.reduce((sum: number, claim: any) => sum + parseFloat(claim.incurred_amount), 0);
 
-		expect(incurred / earned).toBeCloseTo(0.7525, 4);
-		expect(incurred / data.claims.length).toBeCloseTo(7312.2, 1);
+		expect(incurred / earned).toBeCloseTo(0.7568, 4);
+		expect(incurred / data.claims.length).toBeCloseTo(7381.4, 1);
 	});
 });

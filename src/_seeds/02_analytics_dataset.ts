@@ -9,6 +9,13 @@ import {DATASET_SEED, generateDataset} from '../data/generator';
  * this against an empty database reproduces the dataset exactly, which is what lets the
  * test suite assert figures rather than ranges.
  */
+/** The generated dataset keys are camelCase; the tables they land in are snake_case. */
+const SNAKE_CASE: Record<string, string> = {
+	premiumPayments: 'premium_payments',
+	claimPayments: 'claim_payments',
+	claimAssessments: 'claim_assessments'
+};
+
 export async function seed(knex: Knex): Promise<void> {
 	const started = Date.now();
 
@@ -41,28 +48,28 @@ export async function seed(knex: Knex): Promise<void> {
 		);
 	}
 
-	const total =
-		data.regions.length +
-		data.customers.length +
-		data.vehicles.length +
-		data.policies.length +
-		data.premiumPayments.length +
-		data.garages.length +
-		data.claims.length +
-		data.claimAssessments.length;
+	/**
+	 * DERIVED from the dataset, not restated (defect D-49).
+	 *
+	 * Both the total and the table below were hand-maintained lists of the eight tables
+	 * that existed when they were written. Adding `claim_payments` inserted 9,416 rows
+	 * that the summary then did not mention and did not count — so the seed reported
+	 * 124,146 rows while writing 133,562, and a reader checking the console against the
+	 * database would have found the table missing and concluded the insert had failed.
+	 *
+	 * Deriving it means the summary cannot drift again: a table added to the generated
+	 * dataset appears here the moment it exists.
+	 */
+	const summary = Object.fromEntries(
+		Object.entries(data)
+			.filter(([, rows]) => Array.isArray(rows))
+			.map(([name, rows]) => [SNAKE_CASE[name] ?? name, (rows as unknown[]).length])
+	);
+	const total = Object.values(summary).reduce((sum, count) => sum + count, 0);
 
 	console.log(
 		`Seeded ${total.toLocaleString()} analytics rows in ${((Date.now() - started) / 1000).toFixed(1)}s ` +
 			`(seed ${DATASET_SEED}).`
 	);
-	console.table({
-		regions: data.regions.length,
-		customers: data.customers.length,
-		vehicles: data.vehicles.length,
-		policies: data.policies.length,
-		premium_payments: data.premiumPayments.length,
-		garages: data.garages.length,
-		claims: data.claims.length,
-		claim_assessments: data.claimAssessments.length
-	});
+	console.table(summary);
 }
