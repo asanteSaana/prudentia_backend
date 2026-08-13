@@ -1,5 +1,34 @@
 import type {Knex} from 'knex';
-import {ANALYTICS_TABLE_ORDER, APPLICATION_TABLE_LIST} from '../_services/_dbTables';
+/**
+ * ── This migration deliberately imports NOTHING from `_dbTables` (defect D-45) ──
+ *
+ * It used to loop over the live `ANALYTICS_TABLE_ORDER` constant. Adding `claim_payments`
+ * to that constant therefore reached BACK IN TIME and changed what this already-written
+ * migration does — and since the table is created by a later migration, a fresh database
+ * failed here with `relation "public.claim_payments" does not exist`. It worked on every
+ * existing database, because there the grant had come from the new migration; only a
+ * from-scratch run could show it. CI, given a virgin database, showed it immediately.
+ *
+ * A migration is a historical record of one transition. Its behaviour must be fixed at
+ * the moment it is written, so the lists below are frozen copies of the schema as it was
+ * on 2026-08-12. A table added afterwards carries its own GRANT in its own migration —
+ * which is exactly what `20260813120000_claim_payments.ts` does.
+ */
+
+/** The eight analytics tables that existed when this migration was written. */
+const ANALYTICS_TABLES_AT_THIS_MIGRATION = [
+	'regions',
+	'customers',
+	'vehicles',
+	'policies',
+	'premium_payments',
+	'garages',
+	'claims',
+	'claim_assessments'
+];
+
+/** The application tables as at the same date. Never granted to the read-only role. */
+const APPLICATION_TABLES_AT_THIS_MIGRATION = ['users', 'query_log'];
 
 /**
  * Least-privilege role provisioning (ADR-03, NFR-02, FR-14).
@@ -131,7 +160,7 @@ export async function up(knex: Knex): Promise<void> {
 	// 5. SELECT, one statement per table, exactly as specified. Enumerating them by hand
 	//    rather than using ALL TABLES is the point: the grant list is reviewable, and a
 	//    table added later is denied until someone adds a line here.
-	for (const table of ANALYTICS_TABLE_ORDER) {
+	for (const table of ANALYTICS_TABLES_AT_THIS_MIGRATION) {
 		await knex.raw(`GRANT SELECT ON TABLE public.${table} TO ${role};`);
 	}
 
@@ -139,7 +168,7 @@ export async function up(knex: Knex): Promise<void> {
 	//    REVOKE above — stated anyway, because this is the line that stops a total
 	//    failure of the gate from reaching a password hash, and it should be impossible
 	//    to miss when reading the migration.
-	for (const table of APPLICATION_TABLE_LIST) {
+	for (const table of APPLICATION_TABLES_AT_THIS_MIGRATION) {
 		await knex.raw(`REVOKE ALL ON TABLE public.${table} FROM ${role};`);
 	}
 
@@ -156,9 +185,9 @@ export async function up(knex: Knex): Promise<void> {
 		)
 	).rows;
 
-	if (count !== ANALYTICS_TABLE_ORDER.length) {
+	if (count !== ANALYTICS_TABLES_AT_THIS_MIGRATION.length) {
 		throw new Error(
-			`Read-only role provisioning failed verification: expected ${ANALYTICS_TABLE_ORDER.length} table grants ` +
+			`Read-only role provisioning failed verification: expected ${ANALYTICS_TABLES_AT_THIS_MIGRATION.length} table grants ` +
 				`for "${role}", found ${count}. Refusing to record this migration as applied.`
 		);
 	}

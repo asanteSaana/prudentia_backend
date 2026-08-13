@@ -15,6 +15,37 @@ jobs:
     permissions:
       contents: read #This is required for actions/checkout
 
+    # ── Why this job runs a real PostgreSQL ──────────────────────────────────
+    #
+    # The 55 integration tests talk to a database. Without one they fail with a bare
+    # `AggregateError` — Node's "every address for this host refused the connection" —
+    # which reads as a mysterious test failure rather than as missing infrastructure.
+    #
+    # The template estate's workflows solve this by not running tests at all in the
+    # deploy pipeline. That is a reasonable trade for those services and the wrong one
+    # here: the tests skipped would include the ones asserting that an EXECUTIVE never
+    # receives generated SQL, that blocked questions are still audited, and that the
+    # read-only role cannot write. Deploying without running them would mean main could
+    # ship with the security boundary broken and the pipeline still green.
+    #
+    # **Version 17 is not a free choice.** `libpg-query@pg17` must match the server major
+    # (ADR-01) — that is what makes "what is validated is byte-for-byte what the server
+    # would execute" true. The adversarial corpus runs against this container.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        # Without this the job races the container and fails intermittently, which is
+        # worse than failing every time.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@v4
 
@@ -23,11 +54,59 @@ jobs:
         with:
           node-version: '24.x'
 
-      - name: npm install, build, and test
+      - name: Install dependencies
+        run: npm install
+
+      # ── The two roles, exactly as production has them (ADR-03) ──────────────
+      #
+      # Only the APPLICATION role is created here. `prudentia_ro` is created by the
+      # migration, because a CREATEROLE role may only ALTER roles it holds ADMIN OPTION
+      # on — and it receives that option only for roles it creates itself (the
+      # PostgreSQL 16 change to CREATEROLE). Pre-creating it here as the superuser would
+      # make the migration's `ALTER ROLE … PASSWORD` fail.
+      #
+      # The app role is deliberately NOT the superuser: connecting as `postgres` would
+      # let every privilege test pass vacuously, which is the one outcome worse than
+      # failing.
+      - name: Provision database roles and test database
+        env:
+          PGPASSWORD: postgres
         run: |
-          npm install
-          npm run build --if-present
-          npm run test --if-present
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 <<'SQL'
+            CREATE ROLE prudentia_app WITH LOGIN PASSWORD 'ci-app-password' CREATEROLE;
+          SQL
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE DATABASE prudentia_test OWNER prudentia_app;"
+
+      - name: Build application
+        run: npm run build --if-present
+
+      # ── Every variable, not just the host ───────────────────────────────────
+      #
+      # `jest-e2e.setup.ts` guards its localhost defaults on DATABASE_HOST alone, so
+      # supplying that one variable SKIPS the whole block — taking the read-only
+      # credentials and the JWT key with it. The file says so in its own comment. Adding
+      # a variable there means adding it here.
+      - name: Run tests
+        env:
+          DATABASE_HOST: localhost
+          DATABASE_PORT: '5432'
+          DATABASE_NAME: prudentia_test
+          DATABASE_USER: prudentia_app
+          DATABASE_PASSWORD: ci-app-password
+          DATABASE_RO_USER: prudentia_ro
+          DATABASE_RO_PASSWORD: ci-readonly-password
+          AUTH_JWT_KEY: ci-jwt-key-not-a-secret
+          SSL_MODE_ENV: 'false'
+          # The deterministic provider: no network, no credential, no cost. It exercises
+          # the entire pipeline — context, gate, execution, audit — with only the model
+          # call served from a fixture.
+          LLM_PROVIDER: stub
+          # Raised so the suite is not throttled by its own legitimate logins; the
+          # dedicated limiter test lowers it via jest.resetModules.
+          LOGIN_RATE_LIMIT_PER_MINUTE: '1000'
+          QUERY_RATE_LIMIT_PER_MINUTE: '1000'
+        run: npm run test --if-present
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -37,14 +116,15 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
+    # A failing build blocks the deploy. That is the point of running the tests here.
     needs: build
-    
+
     steps:
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
           name: node-app
-      
+
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
