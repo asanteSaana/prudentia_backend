@@ -93,6 +93,20 @@ const FORBIDDEN_FUNCTIONS = new Set([
 /** Only `public` may be named explicitly. This is what blocks pg_catalog and information_schema. */
 const ALLOWED_SCHEMA = 'public';
 
+/**
+ * Accepted as a FUNCTION qualifier only — never as a table one.
+ *
+ * PostgreSQL's parser writes this qualification itself when it canonicalises the
+ * SQL-standard special-syntax functions (`EXTRACT`, `SUBSTRING … FROM … FOR`, `TRIM
+ * BOTH … FROM`, `POSITION … IN`, `OVERLAY`). Refusing it refused standard SQL. See the
+ * long note at check 8 — the bare name is still judged, so `pg_catalog.pg_read_file`
+ * remains denied.
+ *
+ * Check 9 does NOT accept it: `pg_catalog.pg_tables` as a RELATION is still refused,
+ * both there and by the catalogue check before it.
+ */
+const PARSER_INJECTED_SCHEMA = 'pg_catalog';
+
 function reject(failedCheck: string, reason: string): ValidationResult {
 	return {permitted: false, normalisedSql: null, reason, failedCheck};
 }
@@ -279,6 +293,36 @@ export async function validateSql(sql: string): Promise<ValidationResult> {
 	}
 
 	// ── 8. No forbidden function ─────────────────────────────────────────────
+	/**
+	 * ── A function is judged by its NAME, never by its qualifier (defect D-41) ──
+	 *
+	 * This check used to reject any qualifier other than `public`, which sounded right
+	 * and was wrong, because **PostgreSQL's parser injects `pg_catalog.` itself**. The
+	 * SQL-standard special-syntax forms are canonicalised into explicitly qualified calls:
+	 *
+	 *   EXTRACT(YEAR FROM d)              ->  pg_catalog.extract
+	 *   SUBSTRING(s FROM 1 FOR 3)         ->  pg_catalog.substring
+	 *   TRIM(BOTH ' ' FROM s)             ->  pg_catalog.btrim
+	 *   POSITION('x' IN s)                ->  pg_catalog.position
+	 *   OVERLAY(s PLACING 'x' FROM 1)     ->  pg_catalog.overlay
+	 *
+	 * while the ordinary call syntax for the very same functions stays bare. So the gate
+	 * was refusing standard SQL that nobody wrote in a suspicious way — `EXTRACT` most of
+	 * all, which makes every accident-year and development-year question impossible. The
+	 * user never typed `pg_catalog`; the parser did.
+	 *
+	 * The qualifier was never where the danger lived. **Every** built-in is in
+	 * `pg_catalog` — `sum` is `pg_catalog.sum` — so the schema tells you nothing. What
+	 * makes `pg_read_file` dangerous is its NAME, and the name rules below catch it
+	 * whether it is written bare or fully qualified:
+	 *
+	 *   pg_catalog.pg_read_file      ->  bare `pg_read_file`     -> denied by prefix
+	 *   pg_catalog.current_setting   ->  bare `current_setting`  -> denied by name
+	 *
+	 * Both are in the adversarial corpus (R-04) precisely so that this relaxation is
+	 * proven not to be one. Any OTHER qualifier — `information_schema`, a user schema —
+	 * is still refused outright, because nothing legitimate the parser emits uses one.
+	 */
 	for (const call of collect(tree, 'FuncCall')) {
 		const parts: string[] = (call?.funcname ?? []).map(stringValue).filter(Boolean) as string[];
 		if (parts.length === 0) continue;
@@ -286,7 +330,7 @@ export async function validateSql(sql: string): Promise<ValidationResult> {
 		const bare = parts[parts.length - 1].toLowerCase();
 		const qualifier = parts.length > 1 ? parts[0].toLowerCase() : null;
 
-		if (qualifier && qualifier !== ALLOWED_SCHEMA) {
+		if (qualifier && qualifier !== ALLOWED_SCHEMA && qualifier !== PARSER_INJECTED_SCHEMA) {
 			return reject(CHECKS.forbiddenFunction, `Function "${parts.join('.')}" is schema-qualified outside public.`);
 		}
 		if (FORBIDDEN_FUNCTIONS.has(bare) || FORBIDDEN_FUNCTION_PREFIXES.some(prefix => bare.startsWith(prefix))) {

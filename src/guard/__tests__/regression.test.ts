@@ -135,3 +135,66 @@ describe('regression — the pg_ namespace is denied structurally, not by enumer
 		expect(result.permitted).toBe(false);
 	});
 });
+
+/**
+ * R-04 — the parser's own `pg_catalog` qualification (defect D-41).
+ *
+ * PostgreSQL canonicalises the SQL-standard special-syntax functions into explicitly
+ * `pg_catalog`-qualified calls. The gate refused any qualifier but `public`, so it
+ * refused standard SQL nobody wrote suspiciously — `EXTRACT` above all, which makes
+ * every accident-year, development-year and seasonality question impossible to ask.
+ *
+ * Accepting that qualifier is a relaxation, so it is fenced from both sides here: the
+ * benign forms must pass, and the dangerous ones must STILL fail through exactly the
+ * same door they always did — the bare function name.
+ */
+describe('regression — parser-injected pg_catalog qualification (R-04)', () => {
+	const STANDARD_SYNTAX: Array<[string, string]> = [
+		['EXTRACT', 'SELECT EXTRACT(YEAR FROM incident_date) AS accident_year FROM claims'],
+		['SUBSTRING ... FROM ... FOR', 'SELECT SUBSTRING(claim_number FROM 1 FOR 3) FROM claims'],
+		['TRIM BOTH ... FROM', "SELECT TRIM(BOTH ' ' FROM claim_number) FROM claims"],
+		['POSITION ... IN', "SELECT POSITION('C' IN claim_number) FROM claims"],
+		['OVERLAY ... PLACING', "SELECT OVERLAY(claim_number PLACING 'X' FROM 1) FROM claims"]
+	];
+
+	test.each(STANDARD_SYNTAX)('permits %s, which the parser rewrites as pg_catalog.*', async (_name, sql) => {
+		const result = await validateSql(sql);
+		if (!result.permitted) {
+			throw new Error(`standard SQL was REJECTED (${result.failedCheck}): ${result.reason}\n${sql}`);
+		}
+		expect(result.permitted).toBe(true);
+	});
+
+	/**
+	 * THE fence. Every one of these is qualified with the same schema the check now
+	 * accepts, and every one must still be refused — by NAME, which is where the danger
+	 * always was. If a future change makes these pass, the relaxation has become one.
+	 */
+	const STILL_DENIED: Array<[string, string]> = [
+		['pg_catalog.pg_read_file', "SELECT pg_catalog.pg_read_file('/etc/passwd')"],
+		['pg_catalog.pg_ls_dir', "SELECT pg_catalog.pg_ls_dir('/')"],
+		['pg_catalog.pg_sleep', 'SELECT pg_catalog.pg_sleep(5)'],
+		['pg_catalog.current_setting', "SELECT pg_catalog.current_setting('is_superuser')"],
+		['pg_catalog.set_config', "SELECT pg_catalog.set_config('x', 'y', false)"],
+		['pg_catalog.has_table_privilege', "SELECT pg_catalog.has_table_privilege('users', 'SELECT')"]
+	];
+
+	test.each(STILL_DENIED)('still rejects %s', async (_name, sql) => {
+		const result = await validateSql(sql);
+		expect(result.permitted).toBe(false);
+		expect(result.failedCheck).toBe('forbidden_function');
+	});
+
+	it('accepts pg_catalog as a FUNCTION qualifier but never as a TABLE one', async () => {
+		// The relaxation is scoped to check 8. A relation is still refused, by the
+		// catalogue check and again by the schema check behind it.
+		const asRelation = await validateSql('SELECT tablename FROM pg_catalog.pg_tables');
+		expect(asRelation.permitted).toBe(false);
+	});
+
+	it('rejects any other qualifier, which the parser never emits', async () => {
+		const result = await validateSql("SELECT information_schema._pg_expandarray(ARRAY[1])");
+		expect(result.permitted).toBe(false);
+		expect(result.failedCheck).toBe('forbidden_function');
+	});
+});

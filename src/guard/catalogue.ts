@@ -99,7 +99,21 @@ export const CATALOGUE: CatalogueTable[] = [
 	},
 	{
 		name: 'premium_payments',
-		description: 'Premium receipts against a policy. Single payments and instalments.',
+		/**
+		 * The direction of the money is stated first and in capitals, deliberately.
+		 *
+		 * A generated loss triangle joined `claims` to this table because it was hunting
+		 * for "payments over time" and this is the only table with a `payment_date` and an
+		 * `amount`. The result passed every gate check — one SELECT, whitelisted tables,
+		 * whitelisted columns — and was completely wrong: cumulative PREMIUM RECEIPTS
+		 * bucketed by claim accident year, presented as paid losses (defect D-42).
+		 *
+		 * The gate cannot catch that; it proves a statement is safe, not that it answers
+		 * the question. The catalogue is the only lever, because it is simultaneously what
+		 * the model is told and what the gate permits (CLAUDE.md §4 rule 6).
+		 */
+		description:
+			'Premium RECEIVED FROM the policyholder — money coming IN. Single payments and instalments. This is NOT claim money: it has no connection to claims, losses or payouts, and must never be used to compute paid losses, loss development or a loss triangle.',
 		columns: [
 			{name: 'id', type: 'integer', description: 'Primary key'},
 			{name: 'policy_id', type: 'integer', description: 'FK to policies.id'},
@@ -136,7 +150,12 @@ export const CATALOGUE: CatalogueTable[] = [
 				type: 'numeric',
 				description: 'Total cost of the claim. THE NUMERATOR OF LOSS RATIO and of claim severity.'
 			},
-			{name: 'paid_amount', type: 'numeric', description: 'Cash actually paid out so far.'},
+			{
+				name: 'paid_amount',
+				type: 'numeric',
+				description:
+					'Cash paid out on the claim so far — money going OUT. A single cumulative figure as at today, NOT a payment history: there is no record of when each part was paid, so paid loss cannot be split across development periods.'
+			},
 			{name: 'fraud_flag', type: 'boolean', description: 'Flagged as suspected fraud'}
 		]
 	},
@@ -182,7 +201,21 @@ export const METRIC_GLOSSARY: Array<{term: string; definition: string}> = [
 	{term: 'Earned premium', definition: 'policies.earned_premium — premium attributable to the elapsed portion of cover. Pre-computed; do not derive it from dates.'},
 	{term: 'Written premium', definition: 'policies.written_premium — total premium contracted at inception.'},
 	{term: 'Settlement cycle time', definition: 'settlement_date - notification_date in days, for settled claims only (settlement_date IS NOT NULL).'},
-	{term: 'Active policy', definition: "A policy whose status is 'ACTIVE'."}
+	{term: 'Active policy', definition: "A policy whose status is 'ACTIVE'."},
+	/**
+	 * A glossary entry that exists to prevent a question rather than answer one.
+	 *
+	 * Loss development is the single most likely actuarial request this schema cannot
+	 * support, and the failure is silent: every table needed to fake it exists, so a
+	 * model will happily assemble something triangle-shaped out of the wrong quantity.
+	 * Saying so plainly is cheaper than any check, because there is no check that could
+	 * catch it — a wrong-but-safe query is still safe.
+	 */
+	{
+		term: 'Loss development / loss triangle',
+		definition:
+			'NOT DERIVABLE from this schema, and must be declined. A development triangle needs claim payment transactions dated over time; this database records only claims.paid_amount, one cumulative figure per claim with no payment dates. premium_payments is premium received and is not claim money. Decline rather than approximating one from settlement_date or premium_payments.'
+	}
 ];
 
 /**
